@@ -3,9 +3,10 @@ package thedorkknightrises.android.messenj;
 import android.os.Bundle;
 import android.os.Looper;
 import android.support.design.widget.FloatingActionButton;
+import android.support.design.widget.TextInputEditText;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
-import android.widget.EditText;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -25,7 +26,8 @@ public class Client extends AppCompatActivity {
     String user;
     private TextView textArea;
     private TextView infoText;
-    private EditText inputField;
+    private TextInputEditText inputField;
+    private ScrollView scrollView;
     private FloatingActionButton sendButton;
     boolean backFlag = false;
 
@@ -45,22 +47,22 @@ public class Client extends AppCompatActivity {
         serverIP = host;
         serverPort = port;
 
-        inputField = (EditText) findViewById(R.id.inputField);
+        inputField = (TextInputEditText) findViewById(R.id.inputField);
         textArea = (TextView) findViewById(R.id.chatText);
         infoText = (TextView) findViewById(R.id.info);
+        scrollView = (ScrollView) findViewById(R.id.scrollView);
 
         sendButton = (FloatingActionButton) findViewById(R.id.fab);
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String text = inputField.getText().toString();
+                String text = inputField.getText().toString().trim();
                 if (!text.equals("")) {
                     send(text);
                     inputField.setText("");
                 }
             }
         });
-        inputField.requestFocus();
         allowTyping(false);
         Runnable r = new Runnable() {
             @Override
@@ -73,6 +75,7 @@ public class Client extends AppCompatActivity {
             }
         };
         new Thread(r).start();
+        inputField.requestFocus();
     }
 
     void allowTyping(final boolean allowed) {
@@ -95,7 +98,6 @@ public class Client extends AppCompatActivity {
                     } else {
                         outputStream.writeObject(user + ": " + text);
                         outputStream.flush();
-                        showMessage(user + ": " + text);
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -110,6 +112,8 @@ public class Client extends AppCompatActivity {
             @Override
             public void run() {
                 textArea.append(text + "\n");
+                scrollView.fullScroll(View.FOCUS_DOWN);
+                inputField.requestFocus();
             }
         });
     }
@@ -118,7 +122,7 @@ public class Client extends AppCompatActivity {
         try {
             showMessage("Attempting connection to server...");
             socket = new Socket(InetAddress.getByName(serverIP), serverPort);
-            showMessage("Connecting to " + socket.getInetAddress().getHostName());
+            showMessage("Connecting to " + socket.getInetAddress().getHostName()+" (waiting in queue)");
         } catch (ConnectException e) {
             e.printStackTrace();
             showMessage("Could not connect to server at that address");
