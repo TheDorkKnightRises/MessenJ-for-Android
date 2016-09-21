@@ -1,4 +1,4 @@
-package thedorkknightrises.android.messenj;
+package thedorkknightrises.messenj;
 
 import android.os.Bundle;
 import android.os.Looper;
@@ -10,12 +10,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.BindException;
 import java.net.ServerSocket;
-import java.net.Socket;
 
 /**
  * Created by Samriddha Basu on 9/10/2016.
@@ -26,16 +25,14 @@ public class Server extends AppCompatActivity {
     private TextInputEditText inputField;
     private FloatingActionButton sendButton;
     private ScrollView scrollView;
-    private ObjectInputStream inputStream;
-    private ObjectOutputStream outputStream;
     private ServerSocket serverSocket;
-    private Socket socket;
     private int port;
     private String user;
     private int connections;
     private int number;
     private ClientHandler[] clientHandlers;
     boolean backFlag = false;
+    public String[] users;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +45,9 @@ public class Server extends AppCompatActivity {
         this.number = b.getInt("number");
         connections = 0;
 
+        users = new String[number + 1];
+        users[0] = user;
+
         inputField = (TextInputEditText) findViewById(R.id.inputField);
         textArea = (TextView) findViewById(R.id.chatText);
         infoText = (TextView) findViewById(R.id.info);
@@ -59,8 +59,9 @@ public class Server extends AppCompatActivity {
             public void onClick(View view) {
                 String text = inputField.getText().toString().trim();
                 if (!text.equals("")) {
-                    send(user + ": " + text);
+                    send(new Message(Message.TYPE_TEXT, text, user));
                     inputField.setText("");
+                    inputField.requestFocus();
                 }
             }
         });
@@ -71,20 +72,20 @@ public class Server extends AppCompatActivity {
         try {
             serverSocket = new ServerSocket(port);
             infoText.setText("Connected as "+user+" on port "+port);
-            showMessage("Waiting to connect...");
+            showMessage(new Message("Waiting to connect..."));
             Runnable r = new Runnable() {
                 @Override
                 public void run() {
                     Looper.prepare();
                     while (connections < number)
-                    waitForConnection(connections);
+                        waitForConnection(connections);
                 }
             };
             new Thread(r).start();
 
         } catch (BindException e) {
             e.printStackTrace();
-            showMessage("This port is already in use. Try hosting on a different port");
+            showMessage(new Message("This port is already in use. Try hosting on a different port"));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -99,43 +100,77 @@ public class Server extends AppCompatActivity {
         });
     }
 
-    void send(final String text) {
+    void send(final Message message) {
         new Thread(new Runnable() {
             @Override
             public void run() {
                 Looper.prepare();
+                allowTyping(false);
                 for (int i = 0; i < number; i++) {
                     try {
-                        clientHandlers[i].outputStream.writeObject(text);
+                        clientHandlers[i].outputStream.writeObject(message);
                         clientHandlers[i].outputStream.flush();
                     } catch (IOException e) {
                         e.printStackTrace();
-                        showMessage("Couldn\'t send your message to user #" + i);
-                    } catch (NullPointerException e) {
-                        e.printStackTrace();
+                        showMessage(new Message("Couldn\'t send your message to user #" + i));
+                    } catch (NullPointerException | ArrayIndexOutOfBoundsException e) {
                     }
                 }
-                showMessage(text);
+                showMessage(message);
+                allowTyping(true);
             }
         }).start();
     }
 
-    void showMessage(final String text) {
+    void showMessage(final Message message) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                textArea.append(text + "\n");
-                scrollView.fullScroll(View.FOCUS_DOWN);
-                inputField.requestFocus();
-            }
-        });
+                switch (message.getType()) {
+                    case Message.TYPE_CONNECT:
+                        textArea.append(message.getText() + "\n");
+                        users[message.getNumber() + 1] = message.getSender();
+                        scrollView.fullScroll(View.FOCUS_DOWN);
+                    case Message.TYPE_DISCONNECT:
+                        users[message.getNumber() + 1] = null;
+                    case Message.TYPE_ANNOUNCE:
+                        textArea.append(message.getText() + "\n");
+                        scrollView.fullScroll(View.FOCUS_DOWN);
+                        break;
+                    case Message.TYPE_TEXT:
+                        textArea.append(message.getSender() + ": " + message.getText() + "\n");
+                        scrollView.fullScroll(View.FOCUS_DOWN);
+                        break;
+                    case Message.TYPE_FILE:
+                        try {
+                            new File(System.getProperty("user.home")
+                                    + File.separator
+                                    + "MessenJ")
+                                    .mkdirs();
+                            File newFile = new File(System.getProperty("user.home")
+                                    + File.separator
+                                    + "MessenJ"
+                                    + File.separator
+                                    + message.getText());
+                            showMessage(new Message(message.getSender() + " is sending file: " + message.getText()));
+                            FileOutputStream writer = new FileOutputStream(newFile);
+                            writer.write(message.getData());
+                            writer.close();
+                            showMessage(new Message("File transfer complete"));
+                            showMessage(new Message("Saved to: " + newFile.getPath()));
+                        } catch (IOException e) {
+                            showMessage(new Message("Error transferring file"));
+                        }
+                        break;
+                }
+            }});
     }
 
     void waitForConnection(int n) {
         if (clientHandlers[n] == null) {
             try {
                 clientHandlers[n] = new ClientHandler(this, serverSocket.accept(), n);
-                send("New client connected");
+                showMessage(new Message("Incoming connection..."));
                 new Thread(clientHandlers[n]).start();
                 connections++;
             } catch (IOException e) {
@@ -146,6 +181,9 @@ public class Server extends AppCompatActivity {
     void disconnected(int number) {
         clientHandlers[number] = null;
         connections--;
+        if (users[number + 1] != null)
+            send(new Message(Message.TYPE_DISCONNECT, number, users[number + 1] + " disconnected", users[number + 1]));
+        users[number + 1] = null;
         waitForConnection(number);
     }
 

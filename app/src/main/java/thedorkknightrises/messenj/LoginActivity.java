@@ -1,4 +1,4 @@
-package thedorkknightrises.android.messenj;
+package thedorkknightrises.messenj;
 
 import android.content.Context;
 import android.content.Intent;
